@@ -1,131 +1,132 @@
-# cPlayer-Typecho-Plugin
-A typecho plugin for the beautiful html5 music player https://github.com/MoePlayer/cPlayer/tree/f9b593dcd89395f9d7dd08ccda428f7628ab9ab2
+# cPlayer for Typecho（本地播放版）
 
-[Demo](https://imjad.cn/archives/none/cplayer-test)
+基于 [journey-ad/cPlayer-Typecho-Plugin](https://github.com/journey-ad/cPlayer-Typecho-Plugin)
+的 Typecho 维护版本，底层播放器基于 [MoePlayer/cPlayer](https://github.com/MoePlayer/cPlayer)。
 
-![cftdemo](https://img.imjad.cn/images/2017/01/19/sp170119_220731.png)
-## 介绍
-1. 通过简短的代码在文章或页面中插入漂亮的Html5播放器
-2. 便捷的配置窗口，不用再手动填代码啦
-3. 自动解析lrc链接，可根据歌曲名和歌手名自动查找封面并生成缓存
-4. 支持网易云音乐单曲、歌单、专辑、歌手id的解析
-5. 网易云音乐返回结果支持https
-6. 与cPlayer保持同步更新
+本版本只保留自定义音频播放能力，适合播放博客本地托管或其他可直接访问的音频资源。
+同时保留 LRC 歌词、翻译歌词、封面、播放列表、缓存和播放器脚本 CDN 配置。
 
-## 声明
-本插件仅供个人学习研究使用，请勿将其用作商业用途，音乐版权归网易云音乐 music.163.com 所有。
+## 主要改动
 
-## 安装方法
-安装前请确保cache目录可写（保存缓存用，否则会让博客加载缓慢）
+- 移除网易云音乐单曲、歌单、专辑、艺人和每日推荐解析
+- 移除网易云音乐 API、`MUSIC_U`、音质和歌单缓存配置
+- 编辑器只保留本地音乐插入界面
+- 修复当前 Typecho 版本下清空缓存后的页面跳转问题
+- 移除旧版 SRI 残留逻辑
+- 增加播放器脚本 CDN 前缀配置
+- 保持 `[player]`、`[mp3]`、`[lrc]`、`[tlrc]` 短代码兼容
 
-主机需支持curl扩展，否则将可能不能自动查找封面、解析网易云音乐id、从https的url中获取歌词(file_get_contents在不支持openssl的主机中不能打开https链接)
+## 安装
 
-Download ZIP, 解压，将 cPlayer-Typecho-Plugin-master 重命名为 cPlayer ，之后上传到你博客中的 /usr/plugins 目录，在后台启用即可
+1. 确保服务器支持 PHP cURL 扩展，并确保插件 `cache` 目录可写。
+2. 将插件目录命名为 `cPlayer`，上传到博客的 `/usr/plugins` 目录。
+3. 在 Typecho 后台启用 cPlayer 插件。
+4. 在文章编辑器中点击“插入本地音乐”，或手动编写短代码。
+
+## CDN 配置
+
+进入后台的 cPlayer 设置页面，配置“播放器脚本 CDN 前缀”。
+
+留空时使用插件本地资源：
+
+```text
+/usr/plugins/cPlayer/assets/dist/cplayer.js
+```
+
+例如填写：
+
+```text
+https://cdn.example.com/cPlayer/
+```
+
+实际加载地址为：
+
+```text
+https://cdn.example.com/cPlayer/cplayer.js?v=2.0.0
+```
+
+CDN 前缀应指向 `cplayer.js` 所在目录。播放器脚本使用跨域加载，CDN
+需要允许站点跨域请求。
 
 ## 使用方法
-在文章或页面中点击编辑器中的插入音乐按钮（目前仅支持原生编辑器/EditorMD/wangEditor）按提示配置，或手动加入下方格式的短代码即可：
 
-#### 调用格式
+### 单曲播放
 
-##### 单曲播放：
-```
-[player 属性1="值1" 属性2="值2" 属性3="值3" /]
-or
-[player 属性1="值1" 属性2="值2" 属性3="值3"][lrc]歌词[/lrc][tlrc]歌词翻译[/tlrc][/player]
+音频 URL 是必填项，歌词、翻译歌词和封面均为可选项：
+
+```text
+[player url="https://example.com/music/song.mp3" artist="歌手" name="歌曲名称" cover="https://example.com/music/cover.jpg"/]
 ```
 
-example:
-```
-[player url="http://xxx.com/xxx.mp3" artist="Someone" name="Title"/]
+### 使用歌词 URL
 
-[player url="http://xxx.com/xxx.mp3" artist="Someone" name="Title"][lrc][00:00.00]Test lyrics[/lrc][tlrc][00:00.00]Test lyrics[/tlrc][/player]
-
-网易云音乐：
-[player id="26598946"/]
-
+```text
+[player url="https://example.com/music/song.mp3" artist="歌手" name="歌曲名称" lrc="https://example.com/music/song.lrc"/]
 ```
 
-##### 多首歌曲：
+翻译歌词需要在同一首歌曲上同时提供 `lrc` 和 `tlrc`：
 
+```text
+[player url="https://example.com/music/song.mp3" artist="歌手" name="歌曲名称" lrc="https://example.com/music/song.lrc" tlrc="https://example.com/music/song-tlrc.lrc"/]
 ```
-[player]
-[mp3 歌曲属性1="值1" 歌曲属性2="值2" 歌曲属性3="值3"/]
-[mp3 歌曲属性1="值1" 歌曲属性2="值2" 歌曲属性3="值3"][lrc]歌词[/lrc][tlrc]歌词翻译[/tlrc][/mp3]
+
+### 直接嵌入歌词文本
+
+```text
+[player url="https://example.com/music/song.mp3" artist="歌手" name="歌曲名称"]
+[lrc]
+[00:00.00]第一句歌词
+[00:05.00]第二句歌词
+[/lrc]
+[tlrc]
+[00:00.00]Translation
+[00:05.00]Translation
+[/tlrc]
 [/player]
 ```
 
-example:
-```
-[player]
-[mp3 url="http://xxx.com/xxx.mp3" artist="Someone" name="Title"/]
-[mp3 url="http://xxx.com/xxx.mp3" artist="Someone" name="Title"][lrc][00:00.00]Test lyrics[/lrc][tlrc][00:00.00]Test lyrics[/tlrc][/mp3]
-[mp3 id="29947420"/] //网易云音乐歌曲id直接解析
+### 播放列表
+
+```text
+[player autoplay="false"]
+[mp3 url="https://example.com/music/song-1.mp3" artist="歌手一" name="歌曲一" lrc="https://example.com/music/song-1.lrc"/]
+[mp3 url="https://example.com/music/song-2.mp3" artist="歌手二" name="歌曲二" cover="https://example.com/music/cover-2.jpg"/]
 [/player]
 ```
 
-##### 网易云音乐解析示例：
-```
-[player id='36492783,33715196,461011'/] //一次加入三首歌
-[player id='456390601' type='collect'/] //歌单
-[player id='2116' type='artist'/] //艺人热门五十首
-[player id='2897014' type='album'/] //专辑
-[player type='recommend'/] //每日推荐
-```
+## 短代码属性
 
-如果要阻止代码解析成为播放器的话，用[]包裹[player]标签即可
+### 播放器和歌曲属性
 
-```
-[[player id='36492783,33715196,461011'/]]
-
-输出：
-[player id='36492783,33715196,461011'/]
+```text
+url: 音频资源 URL，必填
+name: 歌曲名称，未填写时显示 Unknown
+artist: 艺术家，未填写时显示 Unknown
+cover: 封面图片 URL；填写 false 可禁用封面；填写 search 可按歌曲信息自动查找封面
+lrc: LRC 歌词 URL
+tlrc: LRC 翻译歌词 URL，需要同时提供 lrc
+lrcoffset: 歌词整体偏移时间，单位为 ms
+autoplay: 是否自动播放，可用 true 或 false，默认为 false
 ```
 
-#### 用到的shortcode标签
-```
-[player] :整个播放器的标签，里面可用下面提到的所有属性
-[mp3] :可以用歌曲属性和网易云音乐属性，用于嵌套在[player]标签内部添加音乐
-[lrc] :用以添加文本的歌词，可嵌套在[mp3],[player]标签内部；只有当其父标签只定义一首歌的时候才起作用
-[tlrc] :用以添加文本的歌词翻译，可嵌套在[mp3],[player]标签内部；只有当其父标签只定义一首歌的时候才起作用，需要[lrc]标签
-```
+本版本不再支持旧版的 `id`、`type`、`MUSIC_U` 等网易云音乐参数，请使用 `url`
+指定音频资源。
 
-#### 关于各个标签的属性
-歌曲的属性(可在[mp3]或[player]中使用，不能用于修改整个歌单的属性)：
-```
-url: mp3文件的链接，必需
-lrc: 歌词的lrc链接，非必需
-tlrc: 歌词翻译的lrc链接，需要lrc，非必需
-lrcoffset: 歌词整体提前时间（ms）若这个值为负数则为歌词整体延后的时间
-name: 歌曲的标题，若值为空则显示 Unknown
-artist: 歌曲的艺术家，若值为空则显示 Unknown
-cover: 封面图片链接，非必需，若该值为图片链接则按照链接加载封面图，若没有此属性则会按照name和artist自动从豆瓣api中查找封面图，若值为 false 则不自动查找封面，显示默认封面图片
-```
-网易云音乐(与歌曲属性用法一样)
-```
-id: 歌曲/歌单/专辑/艺人的id，如果是歌曲的话可用，分隔歌曲id一次插入多首歌曲
-type: 用以判断id的类型，分为4种：song:歌曲,album:专辑,artist:艺人,collect:歌单,recommend:每日推荐
-```
-特殊属性
-```
-autoplay: 自动播放，可用值为 true 或 false，默认为 false
-```
+`lrc` 和 `tlrc` URL 由服务器端读取并缓存，因此 PHP-FPM 必须能够访问对应地址。
+如果歌词 URL 曾经获取失败，需要在插件设置中点击“清空歌词和封面缓存”后重试。
 
-#### 每日推荐说明
-需先在设置页填入网易云音乐 Cookie 中 MUSIC\_U 字段的值，需要带上 MUSIC\_U=，日推缓存将在缓存时间第二天 6:00 之后失效
+## 缓存与故障排查
 
-**另请注意，现在（2018-1-19）不填 MUSIC\_U 字段歌单将极大几率只返回一首，若你遇到此问题，请填入 MUSIC\_U 字段并清空缓存重试**
+- `cache` 目录用于保存歌词和封面缓存，必须可写。
+- 点击插件设置中的“清空歌词和封面缓存”可以删除已有缓存。
+- 如果音频可以播放但歌词不显示，优先检查服务器是否能访问歌词 URL，以及 URL 是否直接返回 LRC 文本。
+- 文章中应填写原始 URL，例如 `lrc="https://example.com/song.lrc"`，不要填写 Markdown 链接格式。
 
-##### 关于 MUSIC\_U
-MUSIC\_U 字段记录了账号在网易云的登录状态（但不包含密码信息），任何时候都**不应**公开或与他人分享 MUSIC\_U 字段的值
+## 许可证与致谢
 
-#### 清空歌词，播放列表、封面图片url的缓存
+本维护版基于 [journey-ad/cPlayer-Typecho-Plugin](https://github.com/journey-ad/cPlayer-Typecho-Plugin)，
+底层播放器基于 [MoePlayer/cPlayer](https://github.com/MoePlayer/cPlayer)。
 
-前往插件设置页面点击红色清空缓存按钮即可
+制作过程中参考了[zgq354](https://github.com/zgq354/APlayer-Typecho-Plugin)的代码，特此感谢。
 
-## Thanks
-
-制作过程中参考~~(基本照抄)~~了[zgq354](https://github.com/zgq354/APlayer-Typecho-Plugin)的代码，特此感谢
-
-## LICENSE
-
-MIT © [journey.ad](https://github.com/journey-ad/)
+本项目遵循 MIT License。原作者版权归 [journey.ad](https://github.com/journey-ad/)，维护版由 noisky 维护。

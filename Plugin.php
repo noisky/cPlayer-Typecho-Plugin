@@ -3,21 +3,21 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
 date_default_timezone_set('PRC');
 
 /**
- * A beautiful and clean WEB Music Player by HTML5. <a href="http://cplayer.js.org/">http://cplayer.js.org/</a>
- * 
+ * cPlayer for Typecho 本地播放版
+ *
  * @package cPlayer
- * @author journey.ad
- * @version 1.2.13
+ * @author journey.ad（原作者）
+ * @author Noisky（维护者）
+ * @version 2.0.0
  * @dependence 13.12.12-*
- * @link https://github.com/journey-ad/cPlayer-Typecho-Plugin
+ * @link https://github.com/noisky/cPlayer-Typecho-Plugin
  */
 
 class cPlayer_Plugin implements Typecho_Plugin_Interface
 {
     //此变量用以在一个变量中区分多个播放器实例
     protected static $playerID = 0;
-    protected static $VERSION = '1.2.13';
-    protected static $INTEGRITY = 'sha256-DfhgVlsA1ZGGnu67H8m4gS6sKim08dZwCO51NqiW54Q='; //commit#f9b593d
+    protected static $VERSION = '2.0.0';
     /**
      * 激活插件方法,如果激活失败,直接抛出异常
      * 
@@ -27,7 +27,6 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
      */
     public static function activate()
     {
-        Helper::addAction('cplayerapi', 'cPlayer_Action');
         Typecho_Plugin::factory('Widget_Abstract_Contents')->contentEx = array('cPlayer_Plugin','playerparse');
         Typecho_Plugin::factory('Widget_Abstract_Contents')->excerptEx = array('cPlayer_Plugin','playerparse');
         Typecho_Plugin::factory('admin/write-post.php')->bottom = array('cPlayer_Plugin', 'Insert');
@@ -49,7 +48,6 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
      */
     public static function deactivate()
     {
-        Helper::removeAction('cplayerapi');
         $files = glob('usr/plugins/cPlayer/cache/*');
         foreach($files as $file){
             if (is_file($file)){
@@ -72,17 +70,12 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
         if (isset($_GET['action']) && $_GET['action'] == 'deletefile')
             self::deletefile();
 
-        $bitrate= new Typecho_Widget_Helper_Form_Element_Radio(
-            'bitrate', array('128'=>_t('流畅品质'),'192'=>_t('清晰品质'),'320'=>_t('高品质')), '192',
-            _t('默认音质'),
-            _t(''));
-        $form->addInput($bitrate);
-
-        $listexpire = new Typecho_Widget_Helper_Form_Element_Text(
-            'listexpire', null, '43200',
-            _t('歌单更新周期'), _t('设置歌单的缓存时间（单位：秒），超过设定时间后歌单将自动更新'));
-        $listexpire->input->setAttribute('placeholder','43200');
-        $form->addInput($listexpire);
+        $cdn = new Typecho_Widget_Helper_Form_Element_Text(
+            'cdn', null, '',
+            _t('播放器脚本 CDN 前缀'),
+            _t('填写 cplayer.js 所在目录的地址，例如 https://cdn.example.com/cPlayer/；留空使用插件本地资源'));
+        $cdn->input->setAttribute('class','w-50');
+        $form->addInput($cdn);
 
         $nolyric = new Typecho_Widget_Helper_Form_Element_Text(
             'nolyric', null, '找不到歌词的说…(⊙﹏⊙)',
@@ -96,20 +89,8 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
         $notlyric->input->setAttribute('placeholder','翻译不存在的说…╮(╯▽╰)╭');
         $form->addInput($notlyric);
 
-        $MUSIC_U = new Typecho_Widget_Helper_Form_Element_Text(
-            'MUSIC_U', null, '',
-            _t('MUSIC_U'), _t('MUSIC_U的值，需要带MUSIC_U='));
-        $MUSIC_U->input->setAttribute('placeholder','MUSIC_U=…');
-        $form->addInput($MUSIC_U);
-
-        $cache = new Typecho_Widget_Helper_Form_Element_Radio('cache',
-            array('false'=>_t('否')),'false',_t('清空缓存'),_t('清空插件生成的缓存文件，必要时可以使用'));
-        $form->addInput($cache);
-
         $submit = new Typecho_Widget_Helper_Form_Element_Submit();
-        $submit->value(_t('清空歌词，专辑图片链接，在线歌曲缓存'));
-        $submit->setAttribute('style','position:relative;');
-        $submit->input->setAttribute('style','position:absolute;bottom:37px;');
+        $submit->value(_t('清空歌词和封面缓存'));
         $submit->input->setAttribute('class','btn btn-s btn-warn btn-operate');
         $submit->input->setAttribute('formaction',Typecho_Common::url('/options-plugin.php?config=cPlayer&action=deletefile',Helper::options()->adminUrl));
         $form->addItem($submit);
@@ -130,9 +111,9 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
             @unlink($filename);
         }
 
-        Typecho_Widget::widget('Widget_Notice')->set(_t('歌词与封面链接，在线歌曲缓存已清空!'),NULL,'success');
+        Typecho_Widget::widget('Widget_Notice')->set(_t('歌词和封面缓存已清空!'),NULL,'success');
 
-        Typecho_Response::getInstance()->goBack();
+        Typecho_Widget::widget('Widget_Options')->response->goBack();
     }
 
 
@@ -166,26 +147,10 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
                     <a id="cft-shell-close" class="media-modal-close" href="javascript:void(0);" onclick="return false;">X</a>
                     <div id="cft-shell-body">
                         <div class="media-frame-title">
-                            <h2>插入音乐</h2>
-                        </div>
-                        <div class="media-frame-router">
-                            <div class="media-router">
-                                <a href="javascript:void(0);" class="media-menu-item" id="media-menu-netease" onclick="return false;">网易云音乐</a>
-                                <a href="javascript:void(0);" class="media-menu-item active" id="media-menu-local" onclick="return false;">本地音乐</a>
-                            </div>
+                            <h2>插入本地音乐</h2>
                         </div>
                         <div class="media-frame-content">
                             <ul class="cft-ul">
-                                <li class="cft-li" data-type="netease">
-                                    <div>
-                                        <label><input type="radio" name="netease_type" value="netease_songlist" checked>单曲</label>
-                                        <label><input type="radio" name="netease_type" value="netease_album">专辑</label>
-                                        <label><input type="radio" name="netease_type" value="netease_playlist">歌单</label>
-                                        <label><input type="radio" name="netease_type" value="netease_artist">艺人</label>
-                                        <label><input type="radio" name="netease_type" value="netease_recommend">日推</label>
-                                    </div>
-                                    <textarea class="cft-textarea large-text code" cols="30" rows="9" placeholder="输入对应ID，单曲每行一个，专辑、歌单、艺人等每次仅能输入一个"></textarea>
-                                </li>
                                 <li class="cft-li active" data-type="local">
                                     <a class="media-local-songs-add" href="javascript:void(0);" onclick="return false;">+</a>
                                 </li>
@@ -274,29 +239,8 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
                 });
             })
 
-            $(document).on('click', '#media-menu-netease', function() {
-                $('#media-menu-local').removeClass('active');
-                $('.cft-li[data-type=local]').removeClass('active');
-                $('#media-menu-netease').addClass('active');
-                $('.cft-li[data-type=netease]').addClass('active');
-            });
-            $(document).on('click', '#media-menu-local', function() {
-                $('#media-menu-netease').removeClass('active');
-                $('.cft-li[data-type=netease]').removeClass('active');
-                $('#media-menu-local').addClass('active');
-                $('.cft-li[data-type=local]').addClass('active');
-            });
-            
             $(document).on('click', '#cft-shell-insert', function() {
-                switch ($('.media-router').children().filter('.active')[0].id){
-                    case 'media-menu-netease':
-                        grin(parse_netease());
-                        break;
-                    case 'media-menu-local':
-                        grin(parse_local());
-                        break;
-                    default:
-                };
+                grin(parse_local());
             });
             var songs_div = `
 <div class="media-local-songs">
@@ -316,33 +260,8 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
             })
             $('a.media-local-songs-add').click();
         })
-        $('#cft-shell-tips').text('请在下方填写相关内容').delay(3000).slideToggle();
-        function parse_netease(){
-            var autoplay = document.getElementById('autoplay').checked;
-            switch ($("input[name='netease_type']:checked").val()){
-                case 'netease_songlist':
-                    var songs = $('.cft-textarea').val().split('\n').toString();
-                    var code = String.format("[player id='{0}' autoplay='{1}'/]\n", songs, autoplay);
-                    break;
-                case 'netease_album':
-                    var album = $('.cft-textarea').val().toString();
-                    var code = String.format("[player id='{0}' type='album' autoplay='{1}'/]\n", album, autoplay);
-                    break;
-                case 'netease_playlist':
-                    var playlist = $('.cft-textarea').val().toString();
-                    var code = String.format("[player id='{0}' type='collect' autoplay='{1}'/]\n", playlist, autoplay);
-                    break;
-                case 'netease_artist':
-                    var artist = $('.cft-textarea').val().toString();
-                    var code = String.format("[player id='{0}' type='artist' autoplay='{1}'/]\n", artist, autoplay);
-                    break;
-                case 'netease_recommend':
-                    var code = String.format("[player type='recommend' autoplay='{0}'/]\n", autoplay);
-                    break;
-                default:                
-            }
-            return code;
-        }
+        $('#cft-shell-tips').text('请在下方填写本地音频地址、歌词和艺术家信息').delay(3000).slideToggle();
+
         function parse_local(){
             var autoplay = document.getElementById('autoplay').checked;
             var code_player = String.format("[player autoplay='{0}']\n{mp3}[/player]\n", autoplay);
@@ -455,7 +374,11 @@ EOF;
     {
         $playerurl = Helper::options()->pluginUrl.'/cPlayer/assets/dist/';
         $VERSION = self::$VERSION;
-        $INTEGRITY = self::$INTEGRITY;
+        $cdn = Typecho_Widget::widget('Widget_Options')->plugin('cPlayer')->cdn;
+        $cdn = trim((string)$cdn);
+        $scripturl = $cdn
+            ? rtrim($cdn, '/').'/cplayer.js?v='.$VERSION
+            : $playerurl.'cplayer.js?v='.$VERSION;
         echo <<<EOF
 <!-- cPlayer Start -->
 <script async>
@@ -478,10 +401,9 @@ var cp = function(){
 };
 var script = document.createElement('script');
 script.type = "text/javascript";
-script.src = "{$playerurl}cplayer.js?v={$VERSION}";
+script.src = "{$scripturl}";
 script.async = true;
 script.crossOrigin = "anonymous";
-script.integrity = "{$INTEGRITY}";
 if(script.readyState){  //IE
     script.onreadystatechange = function(){
         if (script.readyState == "loaded" ||
@@ -559,8 +481,8 @@ EOF;
         $atts = self::shortcode_parse_atts($attr);
         //开始解析音乐地址
         $result = array();
-        //解析[player]标签内id和url属性
-        if (isset($atts['url']) || isset($atts['id']) || isset($atts['type'])){
+        //解析[player]标签内的本地音频地址
+        if (isset($atts['url'])){
             $r = self::parse($matches[5], $atts);
             if ($r) $result = array_merge($result, $r);
         }
@@ -580,8 +502,6 @@ EOF;
                 }
             }
         }
-        //删除id避免与后面的id属性冲突
-        if (isset($atts['id'])) unset($atts['id']);
         //没有歌曲时候直接返回空值避免出错
         if (empty($result)) return '';
         //播放器默认属性
@@ -666,261 +586,49 @@ EOF;
             if($c = self::getlrc($atts['lrc']))
                 $lyric = $c;
         }
-        $atts['lyric'] = false;
         //解析歌词，如果没有[tlrc][/tlrc]文本歌词但是有tlrc的url的话直接从url中读取并缓存
         if(isset($atts['tlrc']) && !$tlyric){
             if($c = self::getlrc($atts['tlrc']))
                 $tlyric = $c;
         }
-        $atts['transLyric'] = false;
-        //解析网易云音乐
-        if(isset($atts['id']) || isset($atts['type'])){
-            $id = isset($atts['id']) ? $atts['id'] : null;
-            $type = isset($atts['type']) ? $atts['type'] : 'song';
-            $result = self::parse_netease($id, $type);
-            if ($result)
-                $return = array_merge($return, $result);
+
+        //本地音频必须提供url
+        if (!isset($atts['url'])) {
+            return $return;
         }
-        //当网易只返回了一首歌或是插入自己上传的音乐才考虑下方情况
-        if (isset($atts['url']) || count($return) === 1) {
-            //自定义歌词
-            if($lyric)
-                $atts['lyric'] = $lyric;
-            if($tlyric)
-                $atts['transLyric'] = $tlyric;
-            //解析封面
-            if(( ! isset($atts['id']) && isset($atts['url']) && !isset($atts['cover'])) || (isset($atts['cover']) && $atts['cover'] == 'search')){
-                $name = isset($atts['name']) ? $atts['name'] : '';
-                $artist = isset($atts['artist']) ? $atts['artist'] : '';
-                $words = $name.' '.$artist;
-                if ($name || $artist) {
-                    if ($p = self::getcover($words)) {
-                        $atts['cover'] = $p;
-                    }elseif ($artist){
-                        if ($p = self::getcover($artist)){
-                            $atts['cover'] = $p;
-                        }
-                    }
+
+        $atts['lyric'] = $lyric;
+        $atts['transLyric'] = $tlyric;
+        unset($atts['id'], $atts['type']);
+
+        //根据歌曲名和艺术家自动查找封面
+        if ((!isset($atts['cover'])) || (isset($atts['cover']) && $atts['cover'] == 'search')) {
+            $name = isset($atts['name']) ? $atts['name'] : '';
+            $artist = isset($atts['artist']) ? $atts['artist'] : '';
+            $words = $name.' '.$artist;
+            if ($name || $artist) {
+                if ($p = self::getcover($words)) {
+                    $atts['cover'] = $p;
+                } elseif ($artist && ($p = self::getcover($artist))) {
+                    $atts['cover'] = $p;
                 }
-            }
-            //标题和艺术家
-            if (! isset($atts['artist']) && ! isset($atts['id']) && isset($atts['url'])) {
-                $atts['artist'] = 'Unknown';
-            }
-            if (! isset($atts['name']) && ! isset($atts['id']) && isset($atts['url'])) {
-                $atts['name'] = 'Unknown';
-            }
-            //假如不要自动查找封面的话
-            if (isset($atts['cover'])){
-                if ($atts['cover'] == 'false' || !(bool)$atts['cover'])
-                    $atts['cover'] = '';
-                $atts['image'] = $atts['cover'];
-            }
-            //判断是修改网易获取的歌曲属性还是添加自己的歌曲链接
-            if (!isset($atts['id']) && !isset($atts['type'])) {
-                $return[] = $atts;
-            }else{
-                //当没有自定义歌词时候删除变量避免覆盖掉原有歌词
-                if ( ! $atts['lyric']) {
-                    unset($atts['lyric']);
-                }
-                if ( ! $atts['transLyric']) {
-                    unset($atts['transLyric']);
-                }
-                $return[0] = array_merge($return[0], $atts);
             }
         }
+
+        //标题和艺术家
+        if (!isset($atts['artist'])) $atts['artist'] = 'Unknown';
+        if (!isset($atts['name'])) $atts['name'] = 'Unknown';
+
+        //不使用封面时输出空值
+        if (isset($atts['cover'])){
+            if ($atts['cover'] == 'false' || !(bool)$atts['cover'])
+                $atts['cover'] = '';
+            $atts['image'] = $atts['cover'];
+        }
+
+        $return[] = $atts;
         return $return;
     }
-
-
-    /**
-     * 解析netease信息
-     * 
-     * @param unknown $id
-     * @param unknown $type
-     * @return boolean|multitype:multitype:unknown Ambigous <>
-     */
-    private static function parse_netease($id=null, $type='song')
-    {
-        //当id过长时md5避免缓存出错
-        $key = 'netease_'.$type.'_'.(strlen($id) > 20 ? md5($id) : $id);
-        $result = self::cache_get($key);
-        //列表更新周期
-        $listexpire = Typecho_Widget::widget('Widget_Options')->plugin('cPlayer')->listexpire;
-        if ($listexpire === null) $listexpire = 43200;
-        $listexpire = (int)$listexpire;
-
-        //若类型为日推且当前时间为缓存时间第二天6:00之后则重新请求
-        if($result && isset($result['data']) && $type == "recommend"){
-            if((date("m", time() > date("m", $result['time']))) || (date("d", time()) > date("d", $result['time']) && date("Hi", time()) > 600)){
-                $data = self::get_netease_music($id, $type);
-                self::cache_set($key, array('time' => time(),'data' => $data));
-            }else $data = $result['data'];
-        //缓存过期或者找不到的时候则重新请求服务器（设置过期时间是因为歌单等信息可能会发生改变），否则返回缓存
-        }elseif ($result && isset($result['data']) && ($type == "song" || (isset($result['time']) && (time() - $result['time']) < $listexpire))){
-            $data = $result['data'];
-        }else{
-            $data = self::get_netease_music($id, $type);
-            self::cache_set($key, array('time' => time(),'data' => $data));
-        }
-
-        if (empty($data['trackList'])) return false;
-        $return = array();
-        foreach ($data['trackList'] as $v){
-            $return[] = array(
-                'artist' => $v['artist'],
-                'name' => $v['title'],
-                'image' => $v['pic'],
-                'url' => $v['location'],
-                'lyric' => $v['lyric'],
-                'transLyric' => $v['tlyric'],
-            );
-        }
-        return $return; 
-
-    }
-
-
-    /**
-     * 从netease中获取歌曲信息
-     * 
-     * @link https://github.com/webjyh/WP-Player/blob/master/include/player.php
-     * @param unknown $id 
-     * @param unknown $type 获取的id的类型，song:歌曲,album:专辑,artist:艺人,collect:歌单,recommend:日推
-     */
-    private static function get_netease_music($id=null, $type = 'song')
-    {
-        $return = false;
-        $dir=Typecho_Common::url('action/cplayerapi',Helper::options()->index);
-        $MUSIC_U = Typecho_Widget::widget('Widget_Options')->plugin('cPlayer')->MUSIC_U;
-        $data = array(
-            'COOKIE' => "appver=2.0.2;$MUSIC_U",
-            'REFERER' => 'http://music.163.com/',
-            'USERAGENT' => 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.157 Safari/537.36'
-        );
-        switch ( $type ) {
-            case 'song': $url = "http://music.163.com/api/song/detail/?ids=[$id]"; $key = 'songs'; break;
-            case 'album': $url = "http://music.163.com/api/album/$id?id=$id"; $key = 'album'; break;
-            case 'artist': $url = "http://music.163.com/api/artist/$id?id=$id"; $key = 'artist'; break;
-            case 'collect': 
-                $url = "http://music.163.com/api/v3/playlist/detail?id=$id";
-                $collect = self::fetch_url($url, $data);
-                if ( $collect ) {
-                    $collect = json_decode($collect, true);
-                    $id = array();
-                    foreach ($collect['playlist']['trackIds'] as $v) {
-                        array_push($id, $v['id']);
-                    }
-                    $id = implode(",",$id);
-                }
-                $url = "http://music.163.com/api/song/detail/?ids=[$id]"; $key = 'songs';
-                break;
-            case 'recommend': 
-                $url = "http://music.163.com/api/discovery/recommend/songs"; $key = 'recommend';
-                break;
-            default: $url = "http://music.163.com/api/song/detail/?ids=[$id]"; $key = 'songs';
-        }
-        $cexecute = self::fetch_url($url, $data);
-        if ( $cexecute ) {
-            $result = json_decode($cexecute, true);
-            if ( $result['code'] == 200 && $result[$key] ){
-                $return['status'] = true;
-                $return['message'] = "";
-
-                switch ( $key ){
-                    case 'songs' : $data = $result[$key]; break;
-                    case 'album' : $data = $result[$key]['songs']; break;
-                    case 'artist' : $data = $result['hotSongs']; break;
-                    case 'result' : $data = $result[$key]['tracks']; break;
-                    case 'recommend' : $data = $result[$key]; break;
-                    default : $data = $result[$key]; break;
-                }
-
-                //列表
-                $list = array();
-                foreach ( $data as $keys => $data ){
-                    //获取歌词
-                    $lyric = self::get_netease_lyric($data['id']);
-
-                    $artists = null;
-                    foreach($data['artists'] as $v){
-                        $artists .= $v['name'] . '/';
-                    }
-
-                    $list[$data['id']] = array(
-                        'song_id' => $data['id'],
-                        'title' => $data['name'],
-                        'album_name' => $data['album']['name'],
-                        'artist' => substr($artists, 0, -1),
-                        'location' => "{$dir}?get=url&id={$data['id']}",
-                        'pic' => str_replace('http://p', '//p', $data['album']['blurPicUrl'].'?param=128x128'),
-                        'lyric' => $lyric['lyric'],
-                        'tlyric' => $lyric['tlyric']
-                    );
-                }
-                //修复一次添加多个id的乱序问题
-                if ($type = 'song' && strpos($id, ',')) {
-                    $ids = explode(',', $id);
-                    $r = array();
-                    foreach ($ids as $v) {
-                        if (!empty($list[$v])) {
-                            $r[] = $list[$v];
-                        }
-                    }
-                    $list = $r;
-                }
-                //最终播放列表
-                $return['trackList'] = $list;
-            }
-        } else {
-            $return = array('status' =>  false, 'message' =>  '非法请求');
-        }
-        return $return;
-    }
-
-
-    /**
-     * 根据id从netease中获取歌词，带缓存
-     */
-    private static function get_netease_lyric($id)
-    {
-        $key = 'netease_lrc_'.$id;
-        $result = self::cache_get($key);
-        if($result && isset($result[0])){
-            return $result[0];
-        }else{
-            //缓存取不到则重新抓取
-            $url = "http://music.163.com/api/song/lyric?os=pc&id=$id&lv=-1&kv=-1&tv=-1";
-            if (!function_exists('curl_init') ) {
-                return false;
-            } else {
-                $data = array(
-                    'COOKIE' => 'appver=2.0.2',
-                    'REFERER' => 'http://music.163.com/'
-                );
-                $cexecute = self::fetch_url($url, $data);
-                
-                $JSON = false;
-                if ( $cexecute ) {
-                    $result = json_decode($cexecute, true);
-                    if ( $result['code'] == 200 && isset($result['lrc']['lyric']) && $result['lrc']['lyric'] ){
-                        $JSON = array(
-                            'status' => true,
-                            'lyric' => $result['lrc']['lyric'],
-                            'tlyric' => $result['tlyric']['lyric']
-                        );
-                    }
-                } else {
-                    $JSON = array('status' => true, 'lyric' => null, 'tlyric' => null);
-                }
-                //存入缓存
-                self::cache_set($key, array($JSON));
-                return $JSON;
-            }
-        }
-    }
-
 
     /**
      * 通过关键词从豆瓣获取专辑封面链接，当缓存存在时则直接读取缓存
@@ -1048,12 +756,17 @@ EOF;
             curl_setopt($curl, CURLOPT_BINARYTRANSFER, true);
             curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 10);
             curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 0);
+            //若给定url自动跳转到新的url,有了下面参数可自动获取新url内容：302跳转
+            curl_setopt($curl, CURLOPT_FOLLOWLOCATION, 1);
+            //设置cURL允许执行的最长秒数。
+            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
             if(isset($data['HTTPHEADER'])) curl_setopt($curl, CURLOPT_HTTPHEADER, $data['HTTPHEADER']);
             if(isset($data['REFERER'])) curl_setopt($curl,CURLOPT_REFERER, $data['REFERER']);
             if(isset($data['COOKIE'])) curl_setopt($curl,CURLOPT_COOKIE, $data['COOKIE']);
             if(isset($data['USERAGENT'])) curl_setopt($curl,CURLOPT_USERAGENT, $data['USERAGENT']);
             $result=curl_exec($curl);
             $httpCode = curl_getinfo($curl,CURLINFO_HTTP_CODE);
+            // echo("<script>console.log(".json_encode($httpCode).");</script>");
             curl_close($curl);
             if ($httpCode != 200) return false;
             return $result;
