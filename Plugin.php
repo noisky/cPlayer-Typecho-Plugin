@@ -7,8 +7,8 @@ date_default_timezone_set('PRC');
  *
  * @package cPlayer
  * @author journey.ad（原作者）
- * @author Noisky（维护者）
- * @version 2.0.0
+ * @author 饭饭
+ * @version 2.0.1
  * @dependence 13.12.12-*
  * @link https://github.com/noisky/cPlayer-Typecho-Plugin
  */
@@ -17,7 +17,7 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
 {
     //此变量用以在一个变量中区分多个播放器实例
     protected static $playerID = 0;
-    protected static $VERSION = '2.0.0';
+    protected static $VERSION = '2.0.1';
     /**
      * 激活插件方法,如果激活失败,直接抛出异常
      * 
@@ -48,7 +48,8 @@ class cPlayer_Plugin implements Typecho_Plugin_Interface
      */
     public static function deactivate()
     {
-        $files = glob('usr/plugins/cPlayer/cache/*');
+        // 使用插件绝对路径，避免依赖当前工作目录
+        $files = glob(dirname(__FILE__) . '/cache/*');
         foreach($files as $file){
             if (is_file($file)){
                 @unlink($file);
@@ -379,6 +380,14 @@ EOF;
         $scripturl = $cdn
             ? rtrim($cdn, '/').'/cplayer.js?v='.$VERSION
             : $playerurl.'cplayer.js?v='.$VERSION;
+        // 将配置生成的地址安全写入 JavaScript
+        $scripturlJs = json_encode(
+            $scripturl,
+            JSON_HEX_TAG
+            | JSON_HEX_AMP
+            | JSON_HEX_APOS
+            | JSON_HEX_QUOT
+        );
         echo <<<EOF
 <!-- cPlayer Start -->
 <script async>
@@ -401,7 +410,7 @@ var cp = function(){
 };
 var script = document.createElement('script');
 script.type = "text/javascript";
-script.src = "{$scripturl}";
+script.src = {$scripturlJs};
 script.async = true;
 script.crossOrigin = "anonymous";
 if(script.readyState){  //IE
@@ -538,7 +547,15 @@ EOF;
         //开始添加歌曲列表
         $data['list'] = $result;
         //加入头部数组
-        $js = json_encode($data);
+        // 防止歌词、标题等内容破坏内联脚本
+        $js = json_encode(
+            $data,
+            JSON_HEX_TAG
+            | JSON_HEX_AMP
+            | JSON_HEX_APOS
+            | JSON_HEX_QUOT
+            | JSON_UNESCAPED_UNICODE
+        );
         $playerCode .= <<<EOF
 <script>cPlayerOptions.push({$js});</script>
 EOF;
@@ -652,7 +669,11 @@ EOF;
 
             if ($g){
                 $g = json_decode($g,true);
-                if($g['count']){
+                if (
+                    is_array($g)
+                    && !empty($g['count'])
+                    && !empty($g['musics'][0]['image'])
+                ) {
                     $url = $g['musics'][0]['image'];
                     //换成大图
                     $url = str_replace("/spic/", "/mpic/", $url);
@@ -701,9 +722,24 @@ EOF;
     {
         $cachedir = dirname(__FILE__)."/cache";
 
-        $fp = fopen($cachedir.'/'.$key,"w+");
-        $status = fwrite($fp,serialize($value));
-        fclose($fp);
+        $fp = @fopen($cachedir.'/'.$key,"c");
+        if ($fp === false) {
+            return false;
+        }
+
+        // 并发写入时加锁，避免缓存文件被截断或覆盖
+        if (!@flock($fp, LOCK_EX)) {
+            @fclose($fp);
+            return false;
+        }
+
+        $serialized = serialize($value);
+        @ftruncate($fp, 0);
+        @rewind($fp);
+        $status = @fwrite($fp, $serialized);
+        @fflush($fp);
+        @flock($fp, LOCK_UN);
+        @fclose($fp);
         return $status;
     }
 
@@ -719,8 +755,28 @@ EOF;
         $cachedir = dirname(__FILE__)."/cache";
 
         //找到缓存直接读取缓存目录的文件
-        if(file_exists($cachedir.'/'.$key)){
-            return unserialize(file_get_contents($cachedir.'/'.$key));
+        $path = $cachedir . '/' . $key;
+        if(file_exists($path)){
+            $fp = @fopen($path, 'rb');
+            if ($fp === false) {
+                return false;
+            }
+
+            // 读取时加共享锁，避免读到未写完的缓存
+            if (!@flock($fp, LOCK_SH)) {
+                @fclose($fp);
+                return false;
+            }
+
+            $content = @stream_get_contents($fp);
+            @flock($fp, LOCK_UN);
+            @fclose($fp);
+            if ($content === false) {
+                return false;
+            }
+
+            $value = @unserialize($content, array('allowed_classes' => false));
+            return is_array($value) ? $value : false;
         }else{
             return false;
         }
@@ -754,12 +810,14 @@ EOF;
             }
             curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($curl, CURLOPT_BINARYTRANSFER, true);
-            curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, 0);
+            // 外部资源使用短超时，并校验证书
+            curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 2);
+            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, 2);
             //若给定url自动跳转到新的url,有了下面参数可自动获取新url内容：302跳转
             curl_setopt($curl, CURLOPT_FOLLOWLOCATION, 1);
             //设置cURL允许执行的最长秒数。
-            curl_setopt($curl, CURLOPT_TIMEOUT, 10);
+            curl_setopt($curl, CURLOPT_TIMEOUT, 5);
             if(isset($data['HTTPHEADER'])) curl_setopt($curl, CURLOPT_HTTPHEADER, $data['HTTPHEADER']);
             if(isset($data['REFERER'])) curl_setopt($curl,CURLOPT_REFERER, $data['REFERER']);
             if(isset($data['COOKIE'])) curl_setopt($curl,CURLOPT_COOKIE, $data['COOKIE']);
@@ -767,13 +825,20 @@ EOF;
             $result=curl_exec($curl);
             $httpCode = curl_getinfo($curl,CURLINFO_HTTP_CODE);
             // echo("<script>console.log(".json_encode($httpCode).");</script>");
-            curl_close($curl);
+            if (PHP_VERSION_ID < 80500) {
+                curl_close($curl);
+            }
             if ($httpCode != 200) return false;
             return $result;
         }else{
             //若主机不支持openssl则file_get_contents不能打开https的url
-            if($result = @file_get_contents($url)){
-                if (strpos($http_response_header[0],'200')){
+            $result = @file_get_contents($url);
+            if ($result !== false) {
+                $headers = function_exists('http_get_last_response_headers')
+                    ? http_get_last_response_headers()
+                    : ($http_response_header ?? array());
+
+                if (!empty($headers[0]) && strpos($headers[0], '200') !== false) {
                     return $result;
                 }
             }

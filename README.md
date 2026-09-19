@@ -15,10 +15,11 @@
 - 移除旧版 SRI 残留逻辑
 - 增加播放器脚本 CDN 前缀配置
 - 保持 `[player]`、`[mp3]`、`[lrc]`、`[tlrc]` 短代码兼容
+- 2.0.1 增强缓存并发读写、外部请求校验，以及内联脚本数据的安全输出
 
 ## 安装
 
-1. 确保服务器支持 PHP cURL 扩展，并确保插件 `cache` 目录可写。
+1. 如果使用远程歌词或 `cover="search"`，确保服务器支持 PHP cURL 扩展；没有 cURL 时需要启用 `allow_url_fopen` 并支持 HTTPS（通常为 OpenSSL）。同时确保插件 `cache` 目录可写。
 2. 将插件目录命名为 `cPlayer`，上传到博客的 `/usr/plugins` 目录。
 3. 在 Typecho 后台启用 cPlayer 插件。
 4. 在文章编辑器中点击“插入本地音乐”，或手动编写短代码。
@@ -42,7 +43,7 @@ https://cdn.example.com/cPlayer/
 实际加载地址为：
 
 ```text
-https://cdn.example.com/cPlayer/cplayer.js?v=2.0.0
+https://cdn.example.com/cPlayer/cplayer.js?v=2.0.1
 ```
 
 CDN 前缀应指向 `cplayer.js` 所在目录。播放器脚本使用跨域加载，CDN
@@ -121,6 +122,8 @@ autoplay: 是否自动播放，可用 true 或 false，默认为 false
 - 点击插件设置中的“清空歌词和封面缓存”可以删除已有缓存。
 - 如果音频可以播放但歌词不显示，优先检查服务器是否能访问歌词 URL，以及 URL 是否直接返回 LRC 文本。
 - 文章中应填写原始 URL，例如 `lrc="https://example.com/song.lrc"`，不要填写 Markdown 链接格式。
+- 使用 cURL 抓取外部资源时，连接超时为 2 秒、总超时为 5 秒，并会校验 HTTPS 证书；远程站点响应过慢或证书无效时，歌词或自动封面可能无法获取。
+- 如果升级后遇到异常缓存，先点击“清空歌词和封面缓存”再重试；缓存读写已使用文件锁，避免并发请求读到不完整内容。
 
 ## 许可证与致谢
 
@@ -129,4 +132,4 @@ autoplay: 是否自动播放，可用 true 或 false，默认为 false
 
 制作过程中参考了[zgq354](https://github.com/zgq354/APlayer-Typecho-Plugin)的代码，特此感谢。
 
-本项目遵循 MIT License。原作者版权归 [journey.ad](https://github.com/journey-ad/)，维护版由 noisky 维护。
+本项目遵循 MIT License。原作者版权归 [journey.ad](https://github.com/journey-ad/)，当前维护版由饭饭维护。
